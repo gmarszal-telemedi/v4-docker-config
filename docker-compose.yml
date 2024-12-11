@@ -1,0 +1,77 @@
+services:
+    app:
+        build:
+            context: .
+            target: app-dev
+            args:
+                # To authenticate to private registry either use username / password, or Oauth key/secret / etc
+                # Please add Composer Auth JSON Object
+                COMPOSER_AUTH: "{}"
+                APP_BASE_DIR: ${APP_BASE_DIR-.}
+        restart: unless-stopped
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+        volumes:
+            - ${APP_BASE_DIR-.}:/app
+        networks:
+            - monolith_network
+            - v4
+            - nginx-proxy
+
+    web:
+        build:
+            context: .
+            target: web-dev
+            args:
+                APP_BASE_DIR: ${APP_BASE_DIR-.}
+        restart: unless-stopped
+        ports:
+            - "80:80"
+            - "443:443"
+        environment:
+            # The Hostname for the FPM (needs to match the hostname for the `app`)
+            PHP_FPM_HOST: app
+        volumes:
+            - ${APP_BASE_DIR-.}/public:/app/public
+        depends_on:
+            - app
+        networks:
+            - monolith_network
+            - v4
+    rabbitmq:
+        image: rabbitmq:3.7.5-management
+        container_name: telemedico_rabbitmq
+        hostname: rabbitmq
+        user: rabbitmq
+        ports:
+            - 5672:5672
+            - 15672:15672
+        volumes:
+            - ./docker/data/rabbitmq:/var/lib/rabbitmq/mnesia/rabbit@app-rabbitmq:cached
+        environment:
+            RABBITMQ_ERLANG_COOKIE: 6085e2412b6fa88647466c6a81c0cea0
+            RABBITMQ_DEFAULT_USER: rabbitmq
+            RABBITMQ_DEFAULT_PASS: rabbitmq
+            RABBITMQ_DEFAULT_VHOST: /
+        networks:
+            - monolith_network
+            - v4
+    clamav:
+        image: appwrite/clamav:1.0.12
+        restart: unless-stopped
+        container_name: telemedico_clamav
+        ports:
+            - '3310:3310'
+        volumes:
+            - ./:/var/www/site/:rw
+        networks:
+            - monolith_network
+            - v4
+
+networks:
+    v4:
+        internal: true
+    monolith_network:
+        external: true
+    nginx-proxy:
+        external: true
